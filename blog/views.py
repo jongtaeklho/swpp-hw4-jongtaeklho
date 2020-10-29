@@ -1,10 +1,11 @@
 from django.http import HttpResponse, HttpResponseNotAllowed,JsonResponse,HttpResponseBadRequest
 from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate,login,logout
 from django.views.decorators.csrf import ensure_csrf_cookie
 import json
 from json import JSONDecodeError
 from .models import Article,Comment
+from django.core.exceptions import ObjectDoesNotExist
 
 
 def signup(request):
@@ -29,11 +30,12 @@ def signin(request):
             password=req_data['password']
         except (KeyError, JSONDecodeError) as e:
             return HttpResponseBadRequest()
-        names=User.objects.get(username=username)
-        if not names:
+        try:
+            names=User.objects.get(username=username)
+        except User.DoesNotExist:
             return HttpResponse(status=401)
         if names.check_password(password):
-            request.session['logged_in']=True
+            login(request,names)
             request.session['user_id']=names.id
             return HttpResponse(status=204)
         else: return HttpResponse(status=401)
@@ -42,8 +44,8 @@ def signin(request):
 
 def signout(request):
     if request.method=='GET':
-        if request.session['logged_in']==True:
-            request.session['logged_in']=False
+        if request.user.is_authenticated==True:
+            logout(request)
             return HttpResponse(status=204)
         else :
             return HttpResponse(status=401)
@@ -51,7 +53,7 @@ def signout(request):
         return HttpResponseNotAllowed(['GET'])
   
 def article(request):
-    if request.session['logged_in']!=True:
+    if request.user.is_authenticated!=True:
         return HttpResponse(status=401)
     if request.method=='GET':
         article_list=[article for article in Article.objects.all().values()]
@@ -76,7 +78,7 @@ def article(request):
         return HttpResponseNotAllowed(['GET','POST'])
 
 def article_info(request,article_id):
-    if request.session['logged_in']!=True:
+    if request.user.is_authenticated!=True:
         return HttpResponse(status=401)
         
     
@@ -107,7 +109,7 @@ def article_info(request,article_id):
     else:
         return HttpResponseNotAllowed(['GET','PUT','DELETE'])
 def comment(request,article_id):
-    if request.session['logged_in']!=True:
+    if request.user.is_authenticated!=True:
         return HttpResponse(status=401)
     article=Article.objects.get(id=article_id)
     if request.method=='GET':
@@ -123,12 +125,12 @@ def comment(request,article_id):
         comment=Comment(article=article,content=content,author=user)
         comment.save()
         return JsonResponse({'id':comment.id,'article_id':comment.article.id,'content':comment.content,
-        'author_id':comment.author.id})
+        'author_id':comment.author.id},status=201)
     else:
         return HttpResponseNotAllowed(['GET','POST'])
 
 def comment_info(request,comment_id):
-    if request.session['logged_in']==False:
+    if request.user.is_authenticated==False:
         return HttpResponse(status=401)
     comment=Comment.objects.get(id=comment_id)
     if request.method=='GET':
